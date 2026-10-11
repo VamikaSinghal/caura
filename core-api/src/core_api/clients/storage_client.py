@@ -1821,6 +1821,23 @@ class CoreStorageClient:
         result = await self._post("/capability-usage", {"rows": rows})
         return result.get("inserted", 0)  # type: ignore[union-attr]
 
+    async def flush_usage(self, batch: dict) -> dict:
+        """Send one usage-metering flush (``common.usage.UsageAggregator``).
+
+        Idempotent by the batch's ``batch_id`` — storage claims it once
+        (migration 066) — so it is safe to retry on any failure, unlike
+        ``increment_tenant_usage``.
+        """
+        result = await self._post("/usage/flush", batch, idempotent=True)
+        return result or {}  # type: ignore[return-value]
+
+    async def query_usage(self, tenant_id: str, body: dict) -> dict:
+        """One tenant's usage totals: ``{"model_calls": [...], "savings": [...]}``."""
+        result = await self._post(
+            f"/usage/query?tenant_id={quote(tenant_id, safe='')}", body, read=True, idempotent=True
+        )
+        return result or {}  # type: ignore[return-value]
+
     async def increment_tenant_usage(self, rows: list[dict]) -> int:
         """ADD to per-tenant, per-period counters in ``tenant_usage_counters``.
 

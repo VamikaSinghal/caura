@@ -195,6 +195,13 @@
       "category": "cross-tenant-by-design"
     },
     {
+      "id": "method:usage_flush",
+      "verdict": "NONE",
+      "evidence": "no binding tenant parameter",
+      "category": "cross-tenant-by-design",
+      "note": "Verified: cross-tenant by construction, like method:capability_usage_insert and method:tenant_usage_increment. One flush carries every tenant a core-api or core-worker process metered in the last ~15 s; each row's tenant_id is required by the router's pydantic model (min_length=1) and is part of the minute-table conflict key, so a row is only ever added to its own tenant's totals. Counts only, never content (migration 066). The UPDATE half of each upsert adds to the count columns only; every inserted column is named explicitly, none taken from caller keys."
+    },
+    {
       "id": "route:GET /api/v1/storage/_debug/pg_locks",
       "verdict": "NONE",
       "evidence": "no binding tenant read from the request",
@@ -403,6 +410,13 @@
       "evidence": "no binding tenant read from the request",
       "category": "blind-spot",
       "note": "#1095 is FIXED here: tenant_ids (plural) is gone and the route now requires a binding singular tenant_id. It stays listed only because the guard is a pydantic field on TenantUsageQuery -- `tenant_id: str = Field(min_length=1)` -- and the AST pass reads dict-style access (`body[...]`, `body.get(...)`, `_require(body, ...)`), not model attribute access, so it cannot see it. A request omitting tenant_id 422s; test_no_scope_is_422 and test_the_plural_field_is_gone pin that. DO NOT hand-parse the body to satisfy the gate: this router chose pydantic deliberately (see its docstring -- the hand-parsed sibling below is where a missing key became a 500), and trading real validation for static visibility would be backwards. The durable fix is teaching the gate to read a required pydantic field; this is the only allowlisted route shaped that way today, which is why it has not been worth doing yet."
+    },
+    {
+      "id": "route:POST /api/v1/storage/usage/flush",
+      "verdict": "NONE",
+      "evidence": "no binding tenant read from the request",
+      "category": "cross-tenant-by-design",
+      "note": "Verified: the usage-metering flush (migration 066), the per-minute sibling of /capability-usage and /tenant-usage/increment, both already filed here. One request carries many tenants' rows by design; per-tenant flushes would multiply storage calls by the number of tenants a process serves every 15 s. Each row requires tenant_id (pydantic LlmRow/ValueRow, min_length=1). Settles which tenant OWNS a row, not whether the caller may speak for it: the accepted control is that the caller is core-api or core-worker metering its own calls."
     }
   ]
 }

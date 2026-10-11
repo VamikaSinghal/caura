@@ -470,6 +470,17 @@ async def upsert_tenant_suppression(
     resp.raise_for_status()
 
 
+async def flush_usage(client: httpx.AsyncClient, batch: dict) -> None:
+    """Send one usage-metering flush (``common.usage.UsageAggregator``).
+
+    Idempotent by the batch's ``batch_id`` (storage claims it once, migration
+    066), so this opts into the full transient retry set like
+    ``update_lifecycle_audit_row``: a replay is recognised, never double-counted.
+    """
+    resp = await _signed_call(client.post, f"{_PREFIX}/usage/flush", retry=with_retry, json=batch)
+    resp.raise_for_status()
+
+
 async def update_lifecycle_audit_row(
     client: httpx.AsyncClient,
     audit_id: int,
