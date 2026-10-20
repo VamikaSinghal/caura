@@ -38,7 +38,7 @@ def install_hooks(
         raise ValueError("--shared applies only to --scope project")
     filename = "settings.local.json" if scope == "project" and not shared else "settings.json"
     path = root / ".claude" / filename
-    settings = json.loads(path.read_text()) if path.exists() else {}
+    settings = load_settings(path)
     hooks = settings.setdefault("hooks", {})
     executable = shutil.which("caura-bus") or sibling_executable()
     if not executable:
@@ -73,21 +73,32 @@ def install_hooks(
     written = {}
     # Drop our entries everywhere first, so a reinstall also removes hooks an
     # older version installed under events it no longer uses.
+    # Anything that is not shaped like a hook group belongs to the user or
+    # another tool: leave it in place and do not look inside.
     for event, entries in list(hooks.items()):
         if not isinstance(entries, list):
             continue
         owned = False
         for group in entries:
-            kept = [h for h in group.get("hooks", []) if not owned_command(h.get("command", ""))]
-            owned = owned or len(kept) != len(group.get("hooks", []))
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                continue
+            kept = [h for h in group["hooks"] if not owned_hook(h)]
+            owned = owned or len(kept) != len(group["hooks"])
             group["hooks"] = kept
         if owned:
-            entries[:] = [group for group in entries if group.get("hooks")]
+            entries[:] = [
+                g
+                for g in entries
+                if not isinstance(g, dict) or not isinstance(g.get("hooks"), list) or g["hooks"]
+            ]
             if not entries:
                 del hooks[event]
     for event, hook in entries_by_event.items():
+        entries = hooks.setdefault(event, [])
+        if not isinstance(entries, list):
+            raise ValueError(f'"hooks.{event}" in {path} must be a JSON array; not modified')
         entry = {"hooks": [hook]}
-        hooks.setdefault(event, []).append(entry)
+        entries.append(entry)
         written[event] = entry
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".json.tmp")
@@ -96,10 +107,39 @@ def install_hooks(
     return {"path": str(path), "hooks": written}
 
 
+def load_settings(path):
+    """Read a Claude Code settings file, or refuse one the merge could not keep intact.
+
+    The file is the user's own configuration and may hold settings that are
+    not ours, so a shape ``install_hooks`` cannot merge into is reported with
+    its path and left exactly as it was, never rewritten. An empty file is the
+    same as a missing one.
+    """
+    if not path.exists():
+        return {}
+    text = path.read_text()
+    if not text.strip():
+        return {}
+    try:
+        settings = json.loads(text)
+    except ValueError as exc:
+        raise ValueError(f"{path} is not valid JSON ({exc}); not modified") from None
+    if not isinstance(settings, dict):
+        raise ValueError(f"{path} must hold a JSON object; not modified")
+    if "hooks" in settings and not isinstance(settings["hooks"], dict):
+        raise ValueError(f'"hooks" in {path} must be a JSON object; not modified')
+    return settings
+
+
 def sibling_executable():
     """caura-bus next to the running interpreter (a venv or pipx install not on PATH)."""
     candidate = Path(sys.executable).parent / "caura-bus"
     return str(candidate) if candidate.is_file() else None
+
+
+def owned_hook(hook):
+    """A hook entry this installer wrote: a command hook whose argv is ours."""
+    return isinstance(hook, dict) and isinstance(hook.get("command"), str) and owned_command(hook["command"])
 
 
 def owned_command(command):

@@ -738,6 +738,74 @@ def test_hooks_install_never_touches_approval_events_or_foreign_owners(tmp_path,
         assert argv[1:3] == ["recv", "--brief"] and not any("approv" in a or "permission" in a for a in argv)
 
 
+@pytest.mark.parametrize("content", ["", " \n\t"])
+def test_hooks_install_treats_an_empty_settings_file_as_no_settings(tmp_path, monkeypatch, content):
+    monkeypatch.setattr("caura_bus_cli.hooks.shutil.which", lambda _: "/bin/caura-bus")
+    settings = tmp_path / ".claude/settings.local.json"
+    settings.parent.mkdir()
+    settings.write_text(content)  # e.g. created with `touch`
+    install_hooks(project=tmp_path, listen_seconds=30)
+    saved = json.loads(settings.read_text())
+    assert set(saved) == {"hooks"} and set(saved["hooks"]) == {"SessionStart", "Stop", "UserPromptSubmit"}
+
+
+@pytest.mark.parametrize(
+    "content,problem",
+    [
+        ("{not json", "is not valid JSON"),
+        ("[]", "must hold a JSON object"),
+        ('"hooks"', "must hold a JSON object"),
+        ("null", "must hold a JSON object"),
+        ('{"hooks": []}', '"hooks" in'),
+        ('{"hooks": null}', '"hooks" in'),
+        ('{"hooks": {"Stop": "x"}}', '"hooks.Stop" in'),
+        ('{"hooks": {"SessionStart": {"hooks": []}}}', '"hooks.SessionStart" in'),
+    ],
+)
+def test_hooks_install_refuses_a_malformed_settings_file_and_leaves_it_alone(
+    tmp_path, monkeypatch, content, problem
+):
+    monkeypatch.setattr("caura_bus_cli.hooks.shutil.which", lambda _: "/bin/caura-bus")
+    settings = tmp_path / ".claude/settings.local.json"
+    settings.parent.mkdir()
+    settings.write_text(content)
+    with pytest.raises(ValueError) as info:
+        install_hooks(project=tmp_path, listen_seconds=30)
+    # The message names the file and the expected shape, so the user knows what to fix.
+    assert str(settings) in str(info.value) and problem in str(info.value)
+    assert settings.read_text() == content
+    assert list(settings.parent.iterdir()) == [settings]
+    # The CLI reports it the same way, on stderr, instead of a traceback.
+    result = CliRunner().invoke(
+        app,
+        ["hooks", "install", "--runtime", "claude-code", "--dir", str(tmp_path), "--listen-seconds", "60"],
+    )
+    assert result.exit_code == 1 and isinstance(result.exception, SystemExit)
+    assert str(settings) in result.output and "not modified" in result.output
+    assert settings.read_text() == content
+
+
+def test_hooks_install_keeps_hook_groups_it_cannot_read_and_still_installs(tmp_path, monkeypatch):
+    monkeypatch.setattr("caura_bus_cli.hooks.shutil.which", lambda _: "/bin/caura-bus")
+    settings = tmp_path / ".claude/settings.local.json"
+    settings.parent.mkdir()
+    foreign = {
+        # Groups that are not objects, or whose "hooks" is not a list, are not
+        # ours to interpret: they stay, in order, and are never looked inside.
+        "Stop": ["x", {"hooks": "bell"}, {"matcher": "*"}, {"hooks": ["y", {"command": None}]}],
+        # An event we never write may hold anything.
+        "PreToolUse": "not a list",
+    }
+    settings.write_text(json.dumps({"hooks": foreign}))
+    for _ in range(2):
+        install_hooks(project=tmp_path, listen_seconds=30)
+    hooks = json.loads(settings.read_text())["hooks"]
+    assert hooks["Stop"][:4] == foreign["Stop"] and len(hooks["Stop"]) == 5
+    assert hooks["PreToolUse"] == "not a list"
+    assert owned_command(hooks["Stop"][4]["hooks"][0]["command"])
+    assert owned_command(hooks["UserPromptSubmit"][0]["hooks"][0]["command"])
+
+
 async def test_paused_delivery_awaiting_human_prompts_only_after_decision(tmp_path, monkeypatch):
     bus = RecordingBus(config())
     # The previous hint was consumed; the claimed delivery is now paused for a

@@ -152,6 +152,11 @@ writes three hooks into `.claude/settings.local.json` in that project
   replies. Every turn's `Stop` re-arms it.
 - `UserPromptSubmit` adds the same hint to your next message if work is pending.
 
+Other settings in that file are kept, and so is any hook that is not ours. An
+empty file counts as no settings; a file that is not valid JSON, not a JSON
+object, or whose `hooks` has the wrong shape is reported by path and left as
+it is, so nothing of yours is overwritten.
+
 Start (or restart) Claude Code after installing; it reads hooks at startup.
 Measured on the local stack (Claude Code 2.1.294, Haiku): the wake-up fired
 0.4 s after the send, and the sender had the reply 5–8 s after sending.

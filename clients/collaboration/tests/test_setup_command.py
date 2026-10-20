@@ -416,6 +416,17 @@ def test_dry_run_hooks_writes_nothing(env):
     assert not (env.project / ".claude").exists()
 
 
+def test_claude_setup_hooks_reports_a_malformed_settings_file_and_keeps_it(env):
+    settings = env.project / ".claude" / "settings.local.json"
+    settings.parent.mkdir()
+    settings.write_text("[]")
+    result = invoke("--runtime", "claude", "--dir", str(env.project), "--hooks")
+    assert result.exit_code == 0, result.output
+    assert f"[!!] wake hooks not installed: {settings} must hold a JSON object; not modified" in result.output
+    assert settings.read_text() == "[]"
+    assert env.config.exists()  # the rest of setup still ran
+
+
 # --- memory MCP of the same server ------------------------------------------
 
 LEGACY = setup_mod.MEMORY_LIKE_NAMES[1]  # the pre-rename entry name
