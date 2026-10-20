@@ -10,6 +10,19 @@ Only the most recent releases are listed below. Every release, including those
 no longer shown here, is published with its full notes at
 [github.com/caura-ai/caura/releases](https://github.com/caura-ai/caura/releases).
 
+## [3.34.8](https://github.com/caura-ai/caura/compare/backend-v3.34.7...backend-v3.34.8) (2026-10-20)
+
+
+### Bug Fixes
+
+* **ci:** isolate enterprise staging notification credentials ([#2125](https://github.com/caura-ai/caura/issues/2125)) ([2086c93](https://github.com/caura-ai/caura/commit/2086c931eee163e492182410ae0e5b69798cee86))
+
+
+### Dependencies
+
+* **actions:** bump the actions group with 5 updates ([#2106](https://github.com/caura-ai/caura/issues/2106)) ([3743218](https://github.com/caura-ai/caura/commit/3743218228dd49a85e8fec76a8f1bdb0a333cbcd))
+* update pysbd requirement from &lt;1,&gt;=0.3 to &gt;=0.3.4,&lt;1 ([#2104](https://github.com/caura-ai/caura/issues/2104)) ([6f75820](https://github.com/caura-ai/caura/commit/6f758203017665bc21c376736e8a933bfc4cd1db))
+
 ## [3.34.7](https://github.com/caura-ai/caura/compare/backend-v3.34.6...backend-v3.34.7) (2026-10-20)
 
 
